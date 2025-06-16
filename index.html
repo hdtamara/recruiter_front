@@ -1,165 +1,39 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
-<title>Registros</title>
-<style>
-  body{font-family:system-ui,sans-serif;margin:2rem;}
-  table{border-collapse:collapse;width:100%;margin-bottom:1rem;}
-  th,td{border:1px solid #ddd;padding:8px;text-align:left;}
-  tr:nth-child(even){background:#f9f9f9;}
-  button{padding:.4rem .8rem;cursor:pointer;}
-  .pill{padding:2px 6px;border-radius:4px;font-size:.8rem;}
-  .yes{background:#c6f6d5;} .no{background:#fed7d7;}
-  #viewer{display:none;border:1px solid #ddd;padding:1rem;margin-top:1rem;}
-  #viewer iframe{width:100%;height:75vh;border:none;}
-  #viewer ul{margin:0 0 1rem 1.25rem;}
-</style>
+  <meta charset="UTF-8">
+  <title>Registros</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<h1>Registros</h1>
+  <h1>Registros</h1>
 
-<table id="records">
-  <thead>
-    <tr>
-      <th>ID</th>
-      <th>Nombre completo</th>
-      <th>Número doc.</th>
-      <th>Creado</th>
-      <th>Revisado</th>
-      <th>Detalles</th>
-    </tr>
-  </thead>
-  <tbody></tbody>
-</table>
-
-<div>
-  <button id="prev">Anterior</button>
-  <span id="pageInfo"></span>
-  <button id="next">Siguiente</button>
-</div>
-
-<section id="viewer">
-  <h2>Archivos de <span id="personName"></span></h2>
-  <ul id="fileList"></ul>
-  <iframe id="pdfFrame" title="Visor PDF"></iframe>
-</section>
-
-<script>
-const API_URL_LIST   = 'http://204.236.199.57:5678/webhook/candidates';            // lista paginada
-const API_URL_PERSON = 'http://204.236.199.57:5678/webhook/0e7cbf8b-c960-48d1-a3e6-da817e8f70db/canditate';
-const API_URL_PATCH  = 'http://204.236.199.57:5678/webhook/2534c1f7-6624-42e6-bc5a-f2ee6c6679bb/candidate/status/review';
-const limit = 5;
-let offset = 0, page = 1;
-
-const $tbody      = document.querySelector('#records tbody');
-const $pageInfo   = document.getElementById('pageInfo');
-const $prev       = document.getElementById('prev');
-const $next       = document.getElementById('next');
-const $viewer     = document.getElementById('viewer');
-const $personName = document.getElementById('personName');
-const $fileList   = document.getElementById('fileList');
-const $pdfFrame   = document.getElementById('pdfFrame');
-
-/* ---------- LISTA PRINCIPAL ---------- */
-async function loadList(){
-  $tbody.innerHTML = `<tr><td colspan="6">Cargando…</td></tr>`;
-  try{
-    const res  = await fetch(`${API_URL_LIST}?offset=${offset}&limit=${limit}`);
-    if(!res.ok) throw new Error('Error al consultar la lista');
-    const data = await res.json();
-
-    $tbody.innerHTML = data.map(r=>`
+  <table id="records">
+    <thead>
       <tr>
-        <td>${r.id}</td>
-        <td>${r.full_name}</td>
-        <td>${r.id_number}</td>
-        <td>${new Date(r.created_at).toLocaleString()}</td>
-        <td>
-          <button class="pill ${r.is_reviewed?'yes':'no'}"
-                  data-id="${r.id}"
-                  data-reviewed="${r.is_reviewed}">
-            ${r.is_reviewed ? 'Revisado' : 'Pendiente'}
-          </button>
-        </td>
-        <td><button data-details id="det-${r.id}" data-id="${r.id}" data-name="${r.full_name}">Ver</button></td>
-      </tr>`).join('');
+        <th>ID</th>
+        <th>Nombre completo</th>
+        <th>Número doc.</th>
+        <th>Creado</th>
+        <th>Revisado</th>
+        <th>Detalles</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-    $prev.disabled = offset===0;
-    $next.disabled = data.length<limit;
-    $pageInfo.textContent = `Página ${page}`;
-  }catch(err){
-    $tbody.innerHTML = `<tr><td colspan="6">${err.message}</td></tr>`;
-  }
-}
+  <div class="pager">
+    <button id="prev">Anterior</button>
+    <span id="pageInfo"></span>
+    <button id="next">Siguiente</button>
+  </div>
 
-/* ---------- PATCH DE ESTADO ---------- */
-async function toggleReview(id, currentState, $btn){
-  // nuevo estado: lo invertimos
-  const reviewed = !JSON.parse(currentState);
-  $btn.textContent = '…';
-  try{
-    const res = await fetch(`${API_URL_PATCH}/${id}`, {
-      method : 'PATCH',
-      headers: { 'Content-Type':'application/json' },
-    //   body   : JSON.stringify({ is_reviewed: reviewed })
-    });
-    if(!res.ok) throw new Error('No se pudo actualizar');
-    // UI optimista: cambiamos colores y texto
-    $btn.dataset.reviewed = reviewed;
-    $btn.classList.toggle('yes', reviewed);
-    $btn.classList.toggle('no', !reviewed);
-    $btn.textContent = reviewed ? 'Revisado' : 'Pendiente';
-  }catch(err){
-    alert(err.message);
-    loadList();              // refetch para recuperar consistencia
-  }
-}
+  <section id="viewer">
+    <h2>Archivos de <span id="personName"></span></h2>
+    <ul id="fileList"></ul>
+    <iframe id="pdfFrame" title="Visor PDF"></iframe>
+  </section>
 
-/* ---------- DETALLES (PDFs) ---------- */
-async function loadPerson(id,name){
-  $viewer.style.display='block';
-  $personName.textContent = name;
-  $fileList.innerHTML = '<li>Cargando archivos…</li>';
-  $pdfFrame.src = '';
-  try{
-    const res  = await fetch(`${API_URL_PERSON}/${id}`);
-    if(!res.ok) throw new Error('Error al obtener detalles');
-    const [person] = await res.json();
-    const files = person.files||[];
-    if(!files.length){$fileList.innerHTML='<li>No hay archivos</li>';return;}
-    $fileList.innerHTML = files.map((f,i)=>`
-      <li><a href="#" data-url="${f.s3_url}">📄 Archivo ${i+1} (${f.file_type})</a></li>`
-    ).join('');
-  }catch(err){
-    $fileList.innerHTML=`<li>${err.message}</li>`;
-  }
-}
-
-/* ---------- EVENTOS ---------- */
-$prev.onclick = ()=>{if(offset>=limit){offset-=limit;page--;loadList();}};
-$next.onclick = ()=>{offset+=limit;page++;loadList();};
-
-document.addEventListener('click', e=>{
-  // columna "Revisado" (PATCH)
-  if(e.target.matches('button[data-reviewed]')){
-    const $btn = e.target;
-    toggleReview($btn.dataset.id, $btn.dataset.reviewed, $btn);
-  }
-  // columna "Detalles"
-  if(e.target.matches('button[data-details]')){
-    loadPerson(e.target.dataset.id, e.target.dataset.name);
-  }
-  // links de PDF
-  if(e.target.matches('a[data-url]')){
-    e.preventDefault();
-    $pdfFrame.src = e.target.dataset.url + '#toolbar=0';
-  }
-});
-
-/* ---------- INIT ---------- */
-loadList();
-</script>
+  <script src="script.js"></script>
 </body>
 </html>
-
